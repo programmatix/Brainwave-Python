@@ -7,25 +7,23 @@ from datetime import datetime
 
 from brainflow_input import BrainflowInput
 from influx import InfluxWriter
+from json_format import CustomEncoder
+from shared import BandPowers
 from websocket import WebsocketHandler
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-async def sleep(ms: int):
-    return asyncio.sleep(ms / 1000)
-
-
-async def test():
-    print ("Hello")
 
 async def run_brainflow():
     parser = argparse.ArgumentParser()
     parser.add_argument('-b', '--board_id', type=int, required=True, help='The Brainflow board ID to connect to')
     parser.add_argument('-c', '--channels', nargs='+', required=True, help='Specify channel names')
-    parser.add_argument('-j', '--just_wait', action='store_true', help='Just waits, does not take commands or do any processing')
+    parser.add_argument('-j', '--just_wait', action='store_true',
+                        help='Just waits, does not take commands or do any processing')
     parser.add_argument('-w', '--wait_for_commands', action='store_true', help='Wait for directions over websocket')
-    parser.add_argument('-sp', '--serial_port', type=str, help='Serial port e.g. /dev/ttyUSB0 (Linux) or COM11 (Windows)')
+    parser.add_argument('-sp', '--serial_port', type=str,
+                        help='Serial port e.g. /dev/ttyUSB0 (Linux) or COM11 (Windows)')
     parser.add_argument('-wp', '--websocket_port', type=int, help='Websocket port')
     parser.add_argument('-f', '--save_to_brainflow_file', type=str, help="Save the raw unprocessed data to file")
     parser.add_argument('--mqtt_url', type=str, help='MQTT URL')
@@ -58,9 +56,10 @@ async def run_brainflow():
                                          lambda: brainflow_input.close(),
                                          set_done_true)
 
+    websocket_server_task = None
     if args.websocket_port:
         logger.info("Starting websocket server")
-        _ = asyncio.create_task(websocket_handler.start_websocket_server(args.websocket_port))
+        websocket_server_task = asyncio.create_task(websocket_handler.start_websocket_server(args.websocket_port))
 
     logger.info('WaitForCommands: ' + str(args.wait_for_commands))
 
@@ -70,37 +69,25 @@ async def run_brainflow():
 
     while not done:
         if args.just_wait == True:
-            await sleep(10)
+            await asyncio.sleep(10 / 1000)
             continue
 
         try:
-            #logger.info("Waiting for samples")
-            await sleep(samples_per_epoch)
+            await asyncio.sleep(samples_per_epoch / 1000)
 
             eeg_data = await brainflow_input.fetch_and_process_samples()
 
             if len(eeg_data) > 0:
                 start_of_epoch = datetime.now().timestamp() * 1000
 
-                # if mqtt_client:
-                #     mqtt_client.publish('brainwave/eeg', json.dumps([
-                #         {
-                #             'channel': channel.channel_name,
-                #             'delta': channel.band_powers.delta,
-                #             'theta': channel.band_powers.theta,
-                #             'alpha': channel.band_powers.alpha,
-                #             'beta': channel.band_powers.beta,
-                #             'gamma': channel.band_powers.gamma
-                #         } for channel in eeg_data
-                #     ]))
-
                 _ = asyncio.create_task(websocket_handler.broadcast_websocket_message(json.dumps({
                     'address': 'eeg',
                     'data': [channel.__dict__ for channel in eeg_data]
-                })))
+                }, cls=CustomEncoder)))
 
                 if influx:
-                    _ = asyncio.create_task(influx.write_to_influx(eeg_data, start_of_epoch, samples_per_epoch, brainflow_input.sampling_rate))
+                    _ = asyncio.create_task(influx.write_to_influx(eeg_data, start_of_epoch, samples_per_epoch,
+                                                                   brainflow_input.sampling_rate))
 
         except Exception as e:
             logger.error(f"Error: {e}")

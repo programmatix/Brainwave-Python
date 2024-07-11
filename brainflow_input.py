@@ -41,72 +41,87 @@ class BrainflowInput:
         self.board.add_streamer(f"file://{filename}:w")
         logger.info("Stream started")
 
-        max_buffer_size = self.samples_per_epoch * 20
-        self.sample_buffer = np.zeros((len(self.eeg_channels), max_buffer_size))
-        self.sample_count = np.zeros(len(self.eeg_channels), dtype=int)
-        self.start_of_epoch = datetime.now().timestamp() * 1000
+        #self.sample_buffer = np.empty((len(self.eeg_channels), 0), dtype=float)
+        #self.start_of_epoch = datetime.now().timestamp() * 1000
 
     async def fetch_and_process_samples(self) -> list[PerChannel]:
         if self.board is None:
             return []
 
-        all_data: NDArray[Float64] = self.board.get_board_data()
+        cd = self.board.get_current_board_data(self.samples_per_epoch)
+        logger.debug(f"There are {cd.shape} samples ready")
+        if cd.shape[1] < self.samples_per_epoch:
+            return []
 
-        for index, channel in enumerate(self.eeg_channels):
-            new_samples = all_data[channel]
-            num_new_samples = len(new_samples)
-            self.sample_buffer[index, self.sample_count[index]:self.sample_count[index] + num_new_samples] = new_samples
-            self.sample_count[index] += num_new_samples
+        all_data: NDArray[Float64] = self.board.get_board_data(self.samples_per_epoch)
+        eeg_channel_data = all_data[self.eeg_channels]
+        band_powers = DataFilter.get_avg_band_powers(all_data, self.eeg_channels, self.sampling_rate, True)
 
-        logger.info(f"Collected {all_data.shape} samples")
+        logger.info(f"Collected {all_data.shape} samples {eeg_channel_data.shape}")
+
+        #self.sample_buffer = np.concatenate((self.sample_buffer, eeg_channel_data), axis=1)
+
+        # for index, channel in enumerate(self.eeg_channels):
+        #     new_samples = all_data[channel]
+        #     num_new_samples = len(new_samples)
+        #
+        #
+        #     self.sample_buffer[index, self.sample_count[index]:self.sample_count[index] + num_new_samples] = new_samples
+        #     self.sample_count[index] += num_new_samples
+
+        # logger.info(f"Collected {all_data.shape} samples {self.sample_buffer.shape}")
 
         eeg_data: list[PerChannel] = []
 
-        if np.any(self.sample_count >= self.samples_per_epoch):
-            for index, channel in enumerate(self.eeg_channels):
-                channel_name = self.channel_names[index]
-                raw: NDArray[Float64] = self.sample_buffer[index, :self.samples_per_epoch]
-                logger.info(f"raw = {raw.shape}")
-                num_samples_to_shift = self.sample_count[index] - self.samples_per_epoch
-                if num_samples_to_shift > 0:
-                    self.sample_buffer[index, :num_samples_to_shift] = self.sample_buffer[index, self.samples_per_epoch:self.sample_count[index]]
-                self.sample_count[index] -= self.samples_per_epoch
-                logger.info(f"raw = {raw.shape} sample_buffer = {self.sample_buffer.shape} sample_count = {self.sample_count}")
-                filtered = raw.copy()
+        # if self.sample_buffer.shape[1] >= self.samples_per_epoch:
+        logger.info("Collected enough samples for epoch")
 
-                if any(value is None for value in filtered):
-                    logger.warning('Filtered data contains None values')
-                    eeg_data.append(PerChannel(index, channel_name, raw, filtered, [],
-                                               BandPowers(0, 0, 0, 0, 0), []))
-                    continue
+        for index, channel in enumerate(self.eeg_channels):
+            channel_name = self.channel_names[index]
+            raw: NDArray[Float64] = eeg_channel_data[index] # self.sample_buffer[index, :self.samples_per_epoch]
+            logger.info(f"raw = {raw.shape}")
+            # num_samples_to_shift = raw.shape[0]
+            # if num_samples_to_shift > 0:
+            #     self.sample_buffer[index, :num_samples_to_shift] = self.sample_buffer[index, self.samples_per_epoch:self.sample_count[index]]
+            # self.sample_count[index] -= self.samples_per_epoch
+            #logger.info(f"raw = {raw.shape} sample_buffer = {self.sample_buffer.shape}")
+            filtered: NDArray[Float64] = raw.copy()
 
-                DataFilter.detrend(filtered, DetrendOperations.LINEAR)
-                DataFilter.perform_bandpass(filtered, self.sampling_rate, 4.0, 45.0, 4,
-                                            FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
-                DataFilter.perform_bandstop(filtered, self.sampling_rate, 45.0, 80.0, 4,
-                                            FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
+            if any(value is None for value in filtered):
+                logger.warning('Filtered data contains None values')
+                eeg_data.append(PerChannel(index, channel_name, raw, filtered, [],
+                                           BandPowers(0, 0, 0, 0, 0), []))
+                continue
 
-                fft = []
-                try:
-                    next_power_of_two = 2 ** (len(filtered) - 1).bit_length()
-                    padded = filtered + [0] * (next_power_of_two - len(filtered))
-                    fft = DataFilter.perform_fft(padded, WindowOperations.HAMMING)
-                except Exception as e:
-                    logger.error(f"Error performing FFT: {e}")
+            DataFilter.detrend(filtered, DetrendOperations.LINEAR)
+            DataFilter.perform_bandpass(filtered, self.sampling_rate, 4.0, 45.0, 4,
+                                        FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
+            DataFilter.perform_bandstop(filtered, self.sampling_rate, 45.0, 80.0, 4,
+                                        FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
 
-                band_powers = DataFilter.get_avg_band_powers([filtered], [0], self.sampling_rate, True)[0]
-                over_threshold_indices = [i for i, sample in enumerate(filtered) if abs(sample) > 30]
+            fft = []
+            # try:
+            #     next_power_of_two = 2 ** (len(filtered) - 1).bit_length()
+            #     padded = filtered + [0] * (next_power_of_two - len(filtered))
+            #     fft = DataFilter.perform_fft(padded, WindowOperations.HAMMING)
+            # except Exception as e:
+            #     logger.error(f"Error performing FFT: {e}")
 
-                eeg_data.append(PerChannel(
-                    index, channel_name, raw, filtered, fft,
-                    BandPowers(*band_powers),
-                    over_threshold_indices
-                ))
+            #logger.info(f"filtered = {filtered.shape}")
+            over_threshold_indices = 0 # [i for i, sample in enumerate(filtered) if abs(sample) > 30]
+
+            eeg_data.append(PerChannel(
+                index, channel_name, raw.tolist(), filtered.tolist(), fft,
+                BandPowers(*band_powers[index]),
+                over_threshold_indices
+            ))
 
         return eeg_data
 
 
     def close(self):
         if self.board:
-            self.board.stop_stream()
-            self.board.release_session()
+            b = self.board
+            self.board = None
+            b.stop_stream()
+            b.release_session()

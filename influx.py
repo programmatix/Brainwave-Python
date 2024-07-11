@@ -19,14 +19,14 @@ class InfluxWriter:
             data_point = {
                 "measurement": "brainwave_epoch",
                 "tags": {
-                    "channel": channel.channel_name,
+                    "channel": channel.channelName,
                 },
                 "fields": {
-                    "delta": channel.band_powers.delta,
-                    "theta": channel.band_powers.theta,
-                    "alpha": channel.band_powers.alpha,
-                    "beta": channel.band_powers.beta,
-                    "gamma": channel.band_powers.gamma,
+                    "delta": channel.bandPowers.delta,
+                    "theta": channel.bandPowers.theta,
+                    "alpha": channel.bandPowers.alpha,
+                    "beta": channel.bandPowers.beta,
+                    "gamma": channel.bandPowers.gamma,
                 },
                 "time": time
             }

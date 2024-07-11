@@ -1,3 +1,5 @@
+import asyncio
+
 import websockets
 import logging
 import json
@@ -8,12 +10,14 @@ logger = logging.getLogger(__name__)
 
 class WebsocketHandler:
     def __init__(self, on_start, on_stop, on_quit):
+        self.server = None
         self.clients = set()
         self.board = None
         self.done = False
         self.on_start = on_start
         self.on_stop = on_stop
         self.on_quit = on_quit
+        self.shutdown_signal = asyncio.Event()
 
     async def handle_websocket(self, websocket, path):
         logger.info(f"WebSocket connection established with {path}")
@@ -32,9 +36,13 @@ class WebsocketHandler:
 
     async def start_websocket_server(self, port):
         logger.info(f"WebSocket server starting on port {port}")
-        async with websockets.serve(self.handle_websocket, "", port):
-            logger.info(f"WebSocket server started on port {port}")
-            #await asyncio.Future()
+        self.server = await websockets.serve(self.handle_websocket, "", port)
+        await self.shutdown_signal.wait()
+        await self.server.close()
+
+
+    def stop(self):
+        self.shutdown_signal.set()
 
     async def process_websocket_message(self, message):
         try:
