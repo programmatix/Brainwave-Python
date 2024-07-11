@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 class InfluxWriter:
     def __init__(self, influx_url: str, influx_database: str, influx_username: str, influx_password: str):
-        self.client = InfluxDBClient(host=influx_url, username=influx_username, password=influx_password, database=influx_database)
+        self.client = InfluxDBClient(host=influx_url, username=influx_username, password=influx_password, database=influx_database, ssl=True, verify_ssl=True)
         logger.info(f"Connected to InfluxDB at {influx_url}")
 
     async def write_to_influx(self, eeg_data: list[PerChannel], start_of_epoch: float, samples_per_epoch: int, sampling_rate: int):

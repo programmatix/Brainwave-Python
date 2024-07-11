@@ -42,10 +42,10 @@ async def run_brainflow():
 
     influx = None
     if args.influx_url:
-        if not all([args.influx_url, args.influx_token, args.influx_org, args.influx_bucket]):
+        if not all([args.influx_url, args.influx_database, args.influx_username, args.influx_password]):
             logger.error("All InfluxDB parameters (URL, token, org, bucket) must be provided")
             return
-        influx = InfluxWriter(args.influx_url, args.influx_bucket, args.influx_org, args.influx_token)
+        influx = InfluxWriter(args.influx_url, args.influx_database, args.influx_username, args.influx_password)
     brainflow_input = BrainflowInput(args.board_id, args.channels, args.serial_port, samples_per_epoch)
 
     def set_done_true():

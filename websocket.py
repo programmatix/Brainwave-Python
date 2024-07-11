@@ -48,6 +48,10 @@ class WebsocketHandler:
         try:
             msg = json.loads(message)
             logger.info(f"Command received: {message}")
+            await self.broadcast_websocket_message(json.dumps({
+                'address': 'log',
+                'message': f"Command '{message}' received"
+            }))
             if msg['command'] == 'start':
                 logger.info('Starting')
                 self.on_start()

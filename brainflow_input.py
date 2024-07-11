@@ -57,7 +57,7 @@ class BrainflowInput:
         eeg_channel_data = all_data[self.eeg_channels]
         band_powers = DataFilter.get_avg_band_powers(all_data, self.eeg_channels, self.sampling_rate, True)
 
-        logger.info(f"Collected {all_data.shape} samples {eeg_channel_data.shape}")
+        # logger.info(f"Collected {all_data.shape} samples {eeg_channel_data.shape}")
 
         #self.sample_buffer = np.concatenate((self.sample_buffer, eeg_channel_data), axis=1)
 
@@ -79,7 +79,7 @@ class BrainflowInput:
         for index, channel in enumerate(self.eeg_channels):
             channel_name = self.channel_names[index]
             raw: NDArray[Float64] = eeg_channel_data[index] # self.sample_buffer[index, :self.samples_per_epoch]
-            logger.info(f"raw = {raw.shape}")
+            #logger.info(f"raw = {raw.shape}")
             # num_samples_to_shift = raw.shape[0]
             # if num_samples_to_shift > 0:
             #     self.sample_buffer[index, :num_samples_to_shift] = self.sample_buffer[index, self.samples_per_epoch:self.sample_count[index]]
