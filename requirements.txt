@@ -1,0 +1,10 @@
+nptyping==1.4.4
+numpy
+pandas
+brainflow
+mne
+jupyter
+yasa
+influxdb
+paho-mqtt
+websockets
