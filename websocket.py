@@ -3,13 +3,16 @@ import asyncio
 import websockets
 import logging
 import json
+import ssl
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class WebsocketHandler:
-    def __init__(self, on_start, on_stop, on_quit):
+    def __init__(self, ssl_cert, ssl_key, on_start, on_stop, on_quit):
+        self.ssl_cert = ssl_cert
+        self.ssl_key = ssl_key
         self.server = None
         self.clients = set()
         self.board = None
@@ -35,8 +38,15 @@ class WebsocketHandler:
             logger.info(f"WebSocket connection with {path} terminated")
 
     async def start_websocket_server(self, port):
-        logger.info(f"WebSocket server starting on port {port}")
-        self.server = await websockets.serve(self.handle_websocket, "", port)
+        if self.ssl_cert and self.ssl_key:
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_context.load_cert_chain(self.ssl_cert, self.ssl_key)
+
+            logger.info(f"WebSocket server starting on port {port} using SSL")
+            self.server = await websockets.serve(self.handle_websocket, "", port, ssl=ssl_context)
+        else:
+            logger.info(f"WebSocket server starting on port {port}")
+            self.server = await websockets.serve(self.handle_websocket, "", port)
         await self.shutdown_signal.wait()
         await self.server.close()
 

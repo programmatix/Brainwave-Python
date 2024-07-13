@@ -33,6 +33,9 @@ async def run_brainflow():
     parser.add_argument('--influx_database', type=str, help='InfluxDB database')
     parser.add_argument('--influx_username', type=str, help='InfluxDB username')
     parser.add_argument('--influx_password', type=str, help='InfluxDB password')
+    parser.add_argument('--ssl_cert', type=str, help='SSL cert file for websocket server')
+    parser.add_argument('--ssl_key', type=str, help='SSL key file for websocket server')
+
     args = parser.parse_args()
 
     logger.info(f"Starting Brainflow with args: {args}")
@@ -52,7 +55,8 @@ async def run_brainflow():
         nonlocal done
         done = True
 
-    websocket_handler = WebsocketHandler(lambda: brainflow_input.connect_to_board(),
+    websocket_handler = WebsocketHandler(ssl_cert, ssl_key,
+                                         lambda: brainflow_input.connect_to_board(),
                                          lambda: brainflow_input.close(),
                                          set_done_true)
 
