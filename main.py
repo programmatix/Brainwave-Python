@@ -55,7 +55,7 @@ async def run_brainflow():
         nonlocal done
         done = True
 
-    websocket_handler = WebsocketHandler(ssl_cert, ssl_key,
+    websocket_handler = WebsocketHandler(args.ssl_cert, args.ssl_key,
                                          lambda: brainflow_input.connect_to_board(),
                                          lambda: brainflow_input.close(),
                                          set_done_true)
