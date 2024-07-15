@@ -14,11 +14,13 @@ class BandPowers:
 
 class PerChannel:
     def __init__(self, channel_idx: int, channel_name: str, raw: NDArray[Float64], filtered: NDArray[Float64],
-                 fft: List[complex], band_powers: BandPowers, over_threshold_indices: List[int]):
+                 fft_raw, fft_filtered, band_powers: BandPowers, over_threshold_indices: List[int]):
+        # Non-Pythonic names as matching existing JSON
         self.channelIdx = channel_idx
         self.channelName = channel_name
         self.raw = raw
         self.filtered = filtered
-        self.fft = fft
+        self.fftRaw = fft_raw
+        self.fftFiltered = fft_filtered
         self.bandPowers = band_powers
         self.overThresholdIndices = []
