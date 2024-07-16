@@ -13,20 +13,27 @@ class InfluxWriter:
 
     async def write_to_influx(self, eeg_data: list[PerChannel], start_of_epoch: float, samples_per_epoch: int, sampling_rate: int):
         json_body = []
+
         for channel in eeg_data:
             time = int((start_of_epoch + (samples_per_epoch / sampling_rate * 1000)))
+
+            fields = {}
+            band_powers = ["delta", "theta", "alpha", "beta", "gamma"]
+            for power in band_powers:
+                fields[power] = getattr(channel.bandPowers, power)
+
+            # Retrieve and add complexity metrics from the complexity dictionary
+            for metric, value in channel.complexity.items():
+                fields[metric] = value
+
+            fields["over_threshold"] = len(channel.overThresholdIndices)
+
             data_point = {
                 "measurement": "brainwave_epoch",
                 "tags": {
                     "channel": channel.channelName,
                 },
-                "fields": {
-                    "delta": channel.bandPowers.delta,
-                    "theta": channel.bandPowers.theta,
-                    "alpha": channel.bandPowers.alpha,
-                    "beta": channel.bandPowers.beta,
-                    "gamma": channel.bandPowers.gamma,
-                },
+                "fields": fields,
                 "time": time
             }
             json_body.append(data_point)

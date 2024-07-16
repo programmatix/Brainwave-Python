@@ -1,7 +1,9 @@
 import json
 import logging
+import time
 from datetime import datetime
 import numpy as np
+import antropy as ant
 
 from brainflow import BoardShim, DataFilter, DetrendOperations, FilterTypes, WindowOperations, BrainFlowInputParams
 from nptyping import NDArray, Float64
@@ -63,6 +65,7 @@ class BrainflowInput:
         eeg_data: list[PerChannel] = []
 
         logger.info("Collected enough samples for epoch")
+        start_time = time.time()
 
         for index, channel in enumerate(self.eeg_channels):
             channel_name = self.channel_names[index]
@@ -103,14 +106,51 @@ class BrainflowInput:
 
             over_threshold_indices = [i for i, sample in enumerate(filtered) if abs(sample) > 30]
 
+            # Capture all complexity signals supported by the Antropy library.
+            # Will filter to the most useful later.
+            complexity = {}
+            try:
+                x = filtered
+
+                # Calculate and store various entropy and complexity measures
+                complexity["permutation_entropy"] = ant.perm_entropy(x, normalize=True)
+                complexity["spectral_entropy"] = ant.spectral_entropy(x, sf=self.sampling_rate, method='welch', normalize=True)
+                complexity["svd_entropy"] = ant.svd_entropy(x, normalize=True)
+                complexity["approximate_entropy"] = ant.app_entropy(x)
+                complexity["sample_entropy"] = ant.sample_entropy(x)
+
+                # Calculate and store Hjorth parameters
+                mobility, complexity_val = ant.hjorth_params(x)
+                complexity["hjorth_mobility"] = mobility
+                complexity["hjorth_complexity"] = complexity_val
+
+                # Calculate and store zero-crossings
+                complexity["num_zero_crossings"] = ant.num_zerocross(x)
+
+                # Calculate and store fractal dimensions and DFA
+                complexity["petrosian_fd"] = ant.petrosian_fd(x)
+                complexity["katz_fd"] = ant.katz_fd(x)
+                complexity["higuchi_fd"] = ant.higuchi_fd(x)
+                complexity["detrended_fluctuation_analysis"] = ant.detrended_fluctuation(x)
+
+                # Skipping Lempel-Ziv as needs a binary string
+
+            except Exception as e:
+                logger.error(f"Error performing complexity: {e}")
+
+
             filtered_2d = np.reshape(filtered, (1, -1))  # Reshape 'raw' into a 2D array with 1 row
             band_powers_for_channel = DataFilter.get_avg_band_powers(filtered_2d, [0], self.sampling_rate, False)
 
             eeg_data.append(PerChannel(
                 index, channel_name, raw.tolist(), filtered.tolist(), fft_raw_json, fft_filtered_json,
                 BandPowers(*band_powers_for_channel[0]),
-                over_threshold_indices
+                over_threshold_indices,
+                complexity
             ))
+
+        execution_time = time.time() - start_time
+        logger.info(f"Processed epoch in: {execution_time / 1000} ms")
 
         return eeg_data
 

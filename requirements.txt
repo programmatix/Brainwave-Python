@@ -8,3 +8,4 @@ yasa
 influxdb
 paho-mqtt
 websockets
+antropy

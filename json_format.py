@@ -1,5 +1,7 @@
 import json
 
+import numpy as np
+
 
 def is_custom_object(obj):
     return hasattr(obj, "__dict__")
@@ -12,7 +14,13 @@ def snake_to_camel(word):
 
 class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
-        if is_custom_object(obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif is_custom_object(obj):
             # Convert object attributes from snake_case to camelCase
             obj_dict = self.convert_object_to_dict(obj)
             return {snake_to_camel(k): v for k, v in obj_dict.items()}
