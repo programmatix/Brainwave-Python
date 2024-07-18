@@ -32,6 +32,7 @@ class BrainflowInput:
 
     def connect_to_board(self):
         logger.info("Connecting to board")
+        BoardShim.release_all_sessions()
         params = BrainFlowInputParams()
         params.serial_port=self.serial_port
         self.board = BoardShim(self.board_id, params)
