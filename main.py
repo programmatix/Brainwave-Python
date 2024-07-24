@@ -35,6 +35,7 @@ async def run_brainflow():
     parser.add_argument('--influx_password', type=str, help='InfluxDB password')
     parser.add_argument('--ssl_cert', type=str, help='SSL cert file for websocket server')
     parser.add_argument('--ssl_key', type=str, help='SSL key file for websocket server')
+    parser.add_argument('--streamer', type=str, help='Will add a Brainflow streamer output, e.g. streaming_board://224.0.0.0:10000, that can then be read by programs like OpenBCI GUI')
 
     args = parser.parse_args()
 
@@ -49,7 +50,7 @@ async def run_brainflow():
             logger.error("All InfluxDB parameters (URL, token, org, bucket) must be provided")
             return
         influx = InfluxWriter(args.influx_url, args.influx_database, args.influx_username, args.influx_password)
-    brainflow_input = BrainflowInput(args.board_id, args.channels, args.serial_port, samples_per_epoch)
+    brainflow_input = BrainflowInput(args.board_id, args.channels, args.serial_port, samples_per_epoch, args.streamer)
 
     def set_done_true():
         nonlocal done

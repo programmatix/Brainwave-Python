@@ -1,5 +1,5 @@
 # Brainwave
-An electroencephalography (EEG) data processing and visualisation tool, using Node & Typescript.
+An electroencephalography (EEG) data processing and visualisation tool, using Python.
 
 Connects to your EEG device, streams the EEG data, performs some processing, and outputs the results to websocket clients for visualisation.
 
@@ -12,22 +12,21 @@ The processing includes:
 * Band power analysis (delta, theta, alpha, beta, gamma).
 * A cheap blink test that just looks for high amplitude signals, so that epoch can be discarded.
 
-Any board supported by the Brainflow library is supported, including OpenBCI Cyton.
+Any board supported by the Brainflow library is supported, including OpenBCI Cyton and Neurosity Crown (these two have been tested, but others should work).
 
 ## Running
 Clone the project then:
 ```
-cd server
-npm install
+pip install -r requirements.txt
 
 # With synthetic data
-npx ts-node index.ts --boardId -1 --channels F3 T4
+python main.py --board_id -1 --channels F3 T4
 
 # With OpenBCI Cyton 
-npx ts-node index.ts --boardId 0 --channels F3 T4
+python main.py --board_id 0 --channels F3 T4
 
 # With Neurosity Crown 
-npx ts-node index.ts --boardId 23 --channels C3 C4 CP3 CP4 F5 F6 PO3 PO4
+python main.py --board_id 23 --channels C3 C4 CP3 CP4 F5 F6 PO3 PO4
 ```
 
 Replace with your Brainflow board id (using the synthetic board in the example above), and the names of the EEG channels.

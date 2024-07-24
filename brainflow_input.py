@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class BrainflowInput:
 
-    def __init__(self, board_id: int, channel_names: List[str], serial_port: str, samples_per_epoch: int):
+    def __init__(self, board_id: int, channel_names: List[str], serial_port: str, samples_per_epoch: int, streamer: str):
         BoardShim.enable_dev_board_logger()
         BoardShim.set_log_level(0)
         BoardShim.release_all_sessions()
@@ -29,6 +29,7 @@ class BrainflowInput:
         logger.info(f"EEG Channels: {self.eeg_channels}")
         self.sampling_rate = BoardShim.get_sampling_rate(board_id)
         self.board = None
+        self.streamer = streamer
 
     def connect_to_board(self):
         logger.info("Connecting to board")
@@ -43,6 +44,8 @@ class BrainflowInput:
         filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + ".brainflow.csv"
         logger.info(f"Writing to file {filename}")
         self.board.add_streamer(f"file://{filename}:w")
+        if self.streamer is not None:
+            self.board.add_streamer(self.streamer)
         logger.info("Stream started")
 
         #self.sample_buffer = np.empty((len(self.eeg_channels), 0), dtype=float)
