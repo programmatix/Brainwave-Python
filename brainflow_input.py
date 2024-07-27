@@ -21,21 +21,26 @@ class BrainflowInput:
         BoardShim.set_log_level(0)
         BoardShim.release_all_sessions()
 
+        self.last_data_collected = None
         self.board_id = board_id
         self.channel_names = channel_names
-        self.serial_port = serial_port
+        self.serial_port = "" if serial_port is None else serial_port
         self.samples_per_epoch = samples_per_epoch
         self.eeg_channels = BoardShim.get_eeg_channels(board_id)[:len(channel_names)]
         logger.info(f"EEG Channels: {self.eeg_channels}")
         self.sampling_rate = BoardShim.get_sampling_rate(board_id)
         self.board = None
         self.streamer = streamer
+        self.buffer = {channel: [] for channel in self.eeg_channels}
 
     def connect_to_board(self):
         logger.info("Connecting to board")
         BoardShim.release_all_sessions()
         params = BrainFlowInputParams()
         params.serial_port=self.serial_port
+        # params.ip_address="225.1.1.1"
+        # params.ip_port=6677
+        # params.master_board=0
         self.board = BoardShim(self.board_id, params)
         logger.info("Connected to board")
         self.board.prepare_session()
@@ -48,6 +53,9 @@ class BrainflowInput:
             self.board.add_streamer(self.streamer)
         logger.info("Stream started")
 
+        # self.eeg_channels = self.board.get_eeg_channels(self.board._master_board_id)
+        # self.sampling_rate = self.board.get_sampling_rate(self.board._master_board_id)
+
         #self.sample_buffer = np.empty((len(self.eeg_channels), 0), dtype=float)
         #self.start_of_epoch = datetime.now().timestamp() * 1000
 
@@ -55,26 +63,60 @@ class BrainflowInput:
         if self.board is None:
             return []
 
-        cd = self.board.get_current_board_data(self.samples_per_epoch)
-        logger.debug(f"There are {cd.shape} samples ready")
-        if cd.shape[1] < self.samples_per_epoch:
-            return []
+        # while True:
+        #     time.sleep(0.1)
+        #     data = self.board.get_board_data()
+        #     logger.info(f"After 100ms have {data.shape} samples")
 
         # Data from every channel
-        all_data: NDArray[Float64] = self.board.get_board_data(self.samples_per_epoch)
+        # Note Brainflow delivers it in quite a bursty way, so cannot just wait for 1 second and process the data:
+        # 2024-07-27 08:52:21,930 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:22,030 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:22,131 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:22,232 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:22,332 - INFO - After 100ms have (24, 120) samples
+        # 2024-07-27 08:52:22,433 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:22,533 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:22,634 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:22,735 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:22,835 - INFO - After 100ms have (24, 120) samples
+        # 2024-07-27 08:52:22,936 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:23,037 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:23,138 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:23,238 - INFO - After 100ms have (24, 0) samples
+        # 2024-07-27 08:52:23,339 - INFO - After 100ms have (24, 121) samples
+
+        all_data: NDArray[Float64] = self.board.get_board_data()
+        data_collected = time.perf_counter()
+
+        for index, channel in enumerate(self.eeg_channels):
+            self.buffer[channel].extend(all_data[channel])
+
+        samples_collected_per_channel = len(self.buffer[self.eeg_channels[0]])
+        if not all(len(self.buffer[channel]) >= self.samples_per_epoch for channel in self.eeg_channels):
+            logger.info(f"Not enough samples yet - have {samples_collected_per_channel} for first channel")
+            return []
 
         # Just the EEG channel data
         eeg_channel_data = all_data[self.eeg_channels]
 
         eeg_data: list[PerChannel] = []
 
-        logger.info("Collected enough samples for epoch")
-        start_time = time.time()
+        if self.last_data_collected is not None:
+            elapsed_ms = (data_collected - self.last_data_collected) * 1000
+            logger.info(f"Collected enough samples for epoch ({samples_collected_per_channel}) in {elapsed_ms} ms")
+        self.last_data_collected = data_collected
+        start_time = time.perf_counter()
 
         for index, channel in enumerate(self.eeg_channels):
             channel_name = self.channel_names[index]
-            raw: NDArray[Float64] = eeg_channel_data[index]
+            raw: NDArray[Float64] = np.array(self.buffer[channel][:self.samples_per_epoch])
             filtered: NDArray[Float64] = raw.copy()
+
+            # Remove processed samples from buffer
+            self.buffer[channel] = self.buffer[channel][self.samples_per_epoch:]
+
+            logger.info(f"Have {len(raw)} samples for channel {channel_name}")
 
             if any(value is None for value in filtered):
                 logger.warning('Filtered data contains None values')
@@ -96,6 +138,11 @@ class BrainflowInput:
                 padded[:len(filtered)] = filtered
                 fft = DataFilter.perform_fft(padded, WindowOperations.HAMMING)
                 fft_filtered_json = [{"_real": x.real, "_img": x.imag} for x in fft]
+                # magnitudes = np.abs(fft)
+                # freqs = np.fft.fftfreq(len(fft), 1/self.sampling_rate)
+                # fft_filtered_json = [{"freq": freqs[i], "mag": magnitudes[i]} for i in range(len(fft))]
+                # print(fft_filtered_json)
+
             except Exception as e:
                 logger.error(f"Error performing FFT: {e}")
 
@@ -153,8 +200,8 @@ class BrainflowInput:
                 complexity
             ))
 
-        execution_time = time.time() - start_time
-        logger.info(f"Processed epoch in: {execution_time / 1000} ms")
+        execution_time = time.perf_counter() - start_time
+        logger.info(f"Processed epoch in: {execution_time * 1000} ms")
 
         return eeg_data
 
