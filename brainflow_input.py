@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 import numpy as np
 import antropy as ant
+import mne
 
 from brainflow import BoardShim, DataFilter, DetrendOperations, FilterTypes, WindowOperations, BrainFlowInputParams
 from nptyping import NDArray, Float64
@@ -63,11 +64,6 @@ class BrainflowInput:
         if self.board is None:
             return []
 
-        # while True:
-        #     time.sleep(0.1)
-        #     data = self.board.get_board_data()
-        #     logger.info(f"After 100ms have {data.shape} samples")
-
         # Data from every channel
         # Note Brainflow delivers it in quite a bursty way, so cannot just wait for 1 second and process the data:
         # 2024-07-27 08:52:21,930 - INFO - After 100ms have (24, 0) samples
@@ -104,56 +100,74 @@ class BrainflowInput:
 
         if self.last_data_collected is not None:
             elapsed_ms = (data_collected - self.last_data_collected) * 1000
+            # N.b. elapsed_ms will rarely be exactly 1000ms due to the burst nature of the data.  It can also be
+            # under 1s since we may have a backlog of data in the buffer.
             logger.info(f"Collected enough samples for epoch ({samples_collected_per_channel}) in {elapsed_ms} ms")
         self.last_data_collected = data_collected
         start_time = time.perf_counter()
 
         for index, channel in enumerate(self.eeg_channels):
             channel_name = self.channel_names[index]
-            raw: NDArray[Float64] = np.array(self.buffer[channel][:self.samples_per_epoch])
-            filtered: NDArray[Float64] = raw.copy()
 
+            raw: NDArray[Float64] = np.array(self.buffer[channel][:self.samples_per_epoch])
+            mne_raw = raw.copy().reshape(1, -1)
             # Remove processed samples from buffer
             self.buffer[channel] = self.buffer[channel][self.samples_per_epoch:]
 
-            logger.info(f"Have {len(raw)} samples for channel {channel_name}")
+            # Convert to MNE
+            info = mne.create_info(ch_names=[channel_name], sfreq=self.sampling_rate, ch_types='eeg')
+            # Brainflow Cyton data in uV, MNE expects V
+            mne_scaled = mne_raw / 1_000_000
+            mne_raw_array = mne.io.RawArray(mne_scaled, info)
 
-            if any(value is None for value in filtered):
-                logger.warning('Filtered data contains None values')
-                eeg_data.append(PerChannel(index, channel_name, raw, filtered, [],
-                                           BandPowers(0, 0, 0, 0, 0), []))
-                continue
+            print("Raw (orig): ", raw[0:3])
+            print("Raw (MNE) : ", mne_raw_array.get_data(units="µV")[0][0:3])
 
-            DataFilter.detrend(filtered, DetrendOperations.LINEAR)
-            DataFilter.perform_bandpass(filtered, self.sampling_rate, 4.0, 45.0, 4,
-                                        FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
-            DataFilter.perform_bandstop(filtered, self.sampling_rate, 45.0, 80.0, 4,
-                                        FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
 
-            fft_filtered_json = ''
-            fft_raw_json = ''
-            try:
-                next_power_of_two = 2 ** np.ceil(np.log2(len(filtered)))
-                padded = np.zeros(int(next_power_of_two))
-                padded[:len(filtered)] = filtered
-                fft = DataFilter.perform_fft(padded, WindowOperations.HAMMING)
-                fft_filtered_json = [{"_real": x.real, "_img": x.imag} for x in fft]
-                # magnitudes = np.abs(fft)
-                # freqs = np.fft.fftfreq(len(fft), 1/self.sampling_rate)
-                # fft_filtered_json = [{"freq": freqs[i], "mag": magnitudes[i]} for i in range(len(fft))]
-                # print(fft_filtered_json)
+            # FFT
+            mne_raw_array_microvolts = mne.io.RawArray(mne_raw_array.get_data(units="µV"), mne_raw_array.info)
+            spectrum = mne_raw_array_microvolts.compute_psd(fmax=120)
+            psds_raw, freqs_raw = spectrum.get_data(return_freqs=True)
+            fft_raw_json = {"freq": freqs_raw, "power": psds_raw[0]}
 
-            except Exception as e:
-                logger.error(f"Error performing FFT: {e}")
+            filtered_raw = mne_raw_array.get_data(units="µV")[0]
+            DataFilter.detrend(filtered_raw, DetrendOperations.LINEAR)
+            # We get a cleaner signal if we remove most of delta, which we don't care about much during waking hours anyway
+            low_cutoff = 4
+            DataFilter.perform_bandpass(filtered_raw, self.sampling_rate, low_cutoff, 40.0, 4, FilterTypes.BUTTERWORTH, 0)
+            DataFilter.perform_bandstop(filtered_raw, self.sampling_rate, 40.0, 62.0, 4, FilterTypes.BUTTERWORTH, 0)
+            DataFilter.perform_bandstop(filtered_raw, self.sampling_rate, 0.0, low_cutoff, 4, FilterTypes.BUTTERWORTH, 0)
+            mne_raw_array = mne.io.RawArray(filtered_raw.reshape(1, -1) / 1_000_000, info)
 
-            try:
-                next_power_of_two = 2 ** np.ceil(np.log2(len(raw)))
-                padded = np.zeros(int(next_power_of_two))
-                padded[:len(raw)] = raw
-                fft = DataFilter.perform_fft(padded, WindowOperations.HAMMING)
-                fft_raw_json = [{"_real": x.real, "_img": x.imag} for x in fft]
-            except Exception as e:
-                logger.error(f"Error performing FFT: {e}")
+            # MNE filters seem to work much less well than Brainflow's, unclear why - removing
+            # mne_raw_array.filter(l_freq=5, h_freq=40, fir_design='firwin')
+            # mne_raw_array.notch_filter(np.arange(50, 100), filter_length='auto', phase='zero')
+            filtered = mne_raw_array.get_data(units="µV")[0]
+
+            # MNE produces clearer FFTs than Brainflow
+            mne_raw_array_microvolts = mne.io.RawArray(mne_raw_array.get_data(units="µV"), mne_raw_array.info)
+            spectrum_filtered = mne_raw_array_microvolts.compute_psd(fmax=120)
+            psds_filtered, freqs_filtered = spectrum_filtered.get_data(return_freqs=True)
+            fft_filtered_json = {"freq": freqs_filtered, "power": psds_filtered[0]}
+
+            # Capturing wavelets is WIP
+            # Define frequencies of interest (1 Hz to 30 Hz at 1 Hz intervals)
+            # frequencies = np.arange(1, 31, 1)
+            # # Define number of cycles in Morlet wavelet
+            # n_cycles = frequencies / 2.  # Different number of cycles per frequency
+            # power = mne.time_frequency.tfr_array_morlet(mne_raw_array.get_data().reshape(1, 1, -1), sfreq=self.sampling_rate, freqs=frequencies, n_cycles=n_cycles, output='power')
+            #
+            # tfr = power[0, 0, :, :]
+            # wavelets_filtered_json = {"freq": frequencies.tolist(), "power": tfr.tolist()}
+            #
+            # plt.figure(figsize=(10, 6))
+            # plt.imshow(tfr, aspect='auto', origin='lower', extent=[0, tfr.shape[1], frequencies[0], frequencies[-1]])
+            # plt.colorbar(label='Power')
+            # plt.xlabel('Time (samples)')
+            # plt.ylabel('Frequency (Hz)')
+            # plt.title('Time-Frequency Representation (TFR)')
+            # plt.show()
+            # logger.info(f"Have {len(raw)} samples for channel {channel_name}")
 
             over_threshold_indices = [i for i, sample in enumerate(filtered) if abs(sample) > 30]
 
@@ -168,6 +182,7 @@ class BrainflowInput:
                 complexity["spectral_entropy"] = ant.spectral_entropy(x, sf=self.sampling_rate, method='welch', normalize=True)
                 complexity["svd_entropy"] = ant.svd_entropy(x, normalize=True)
                 complexity["approximate_entropy"] = ant.app_entropy(x)
+                # AKA SampEn as used in Automated Detection of Driver Fatigue Based on Entropy and Complexity Measures, Zhang, 2014
                 complexity["sample_entropy"] = ant.sample_entropy(x)
 
                 # Calculate and store Hjorth parameters
