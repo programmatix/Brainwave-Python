@@ -25,6 +25,7 @@ async def run_brainflow():
     parser.add_argument('-sp', '--serial_port', type=str,
                         help='Serial port e.g. /dev/ttyUSB0 (Linux) or COM11 (Windows)')
     parser.add_argument('-wp', '--websocket_port', type=int, help='Websocket port')
+    parser.add_argument('-spe', '--samples_per_epoch', type=int, default=250, help='Samples per epoch')
     parser.add_argument('-f', '--save_to_brainflow_file', type=str, help="Save the raw unprocessed data to file")
     parser.add_argument('--mqtt_url', type=str, help='MQTT URL')
     parser.add_argument('--mqtt_username', type=str, help='MQTT username')
@@ -42,7 +43,7 @@ async def run_brainflow():
     logger.info(f"Starting Brainflow with args: {args}")
 
     done = False
-    samples_per_epoch = 250
+    samples_per_epoch = args.samples_per_epoch
 
     influx = None
     if args.influx_url:
