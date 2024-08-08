@@ -64,7 +64,10 @@ class WebsocketHandler:
             }))
             if msg['command'] == 'start':
                 logger.info('Starting')
-                self.on_start()
+                if 'channels' not in msg:
+                    self.on_start(None)
+                else:
+                    self.on_start(msg['channels'])
             elif msg['command'] == 'stop':
                 logger.info('Stopping recording')
                 self.on_stop()

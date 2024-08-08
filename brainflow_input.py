@@ -17,25 +17,24 @@ logger = logging.getLogger(__name__)
 
 class BrainflowInput:
 
-    def __init__(self, board_id: int, channel_names: List[str], serial_port: str, samples_per_epoch: int, streamer: str):
+    def __init__(self, board_id: int, default_channel_names: List[str], serial_port: str, samples_per_epoch: int, streamer: str):
         BoardShim.enable_dev_board_logger()
         BoardShim.set_log_level(0)
         BoardShim.release_all_sessions()
 
         self.last_data_collected = None
         self.board_id = board_id
-        self.channel_names = channel_names
+        self.channel_names = default_channel_names
         self.serial_port = "" if serial_port is None else serial_port
         self.samples_per_epoch = samples_per_epoch
-        self.eeg_channels = BoardShim.get_eeg_channels(board_id)[:len(channel_names)]
-        logger.info(f"EEG Channels: {self.eeg_channels}")
         self.sampling_rate = BoardShim.get_sampling_rate(board_id)
         self.board = None
         self.streamer = streamer
-        self.buffer = {channel: [] for channel in self.eeg_channels}
 
-    def connect_to_board(self):
-        logger.info("Connecting to board")
+    def connect_to_board(self, channel_names: List[str]):
+        if channel_names is not None:
+            self.channel_names = channel_names
+        logger.info("Connecting to board with channels " + str(self.channel_names))
         BoardShim.release_all_sessions()
         params = BrainFlowInputParams()
         params.serial_port=self.serial_port
@@ -54,11 +53,9 @@ class BrainflowInput:
             self.board.add_streamer(self.streamer)
         logger.info("Stream started")
 
-        # self.eeg_channels = self.board.get_eeg_channels(self.board._master_board_id)
-        # self.sampling_rate = self.board.get_sampling_rate(self.board._master_board_id)
-
-        #self.sample_buffer = np.empty((len(self.eeg_channels), 0), dtype=float)
-        #self.start_of_epoch = datetime.now().timestamp() * 1000
+        self.eeg_channels = BoardShim.get_eeg_channels(self.board_id)[:len(self.channel_names)]
+        logger.info(f"EEG Channels: {self.eeg_channels}")
+        self.buffer = {channel: [] for channel in self.eeg_channels}
 
     async def fetch_and_process_samples(self) -> list[PerChannel]:
         if self.board is None:
