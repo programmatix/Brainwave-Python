@@ -2,6 +2,8 @@ import json
 import logging
 import time
 from datetime import datetime
+from typing import Optional
+
 import numpy as np
 import antropy as ant
 import mne
@@ -31,7 +33,7 @@ class BrainflowInput:
         self.board = None
         self.streamer = streamer
 
-    def connect_to_board(self, channel_names: List[str]):
+    def connect_to_board(self, channel_names: Optional[List[str]]):
         if channel_names is not None:
             self.channel_names = channel_names
         logger.info("Connecting to board with channels " + str(self.channel_names))
@@ -44,6 +46,21 @@ class BrainflowInput:
         self.board = BoardShim(self.board_id, params)
         logger.info("Connected to board")
         self.board.prepare_session()
+
+        # Turn off all channels
+        for i in range(len(self.channel_names), 8):
+            logger.info("Turning off channel " + str(i))
+            self.board.config_board(str(i))
+        symbols = ['!', '@', '#', '$', '%', '^', '&', '*']
+        for i in range(len(self.channel_names)):
+            symbol = symbols[i]
+            logger.info("Turning on channel " + str(i) + " with " + symbol)
+            self.board.config_board(symbol)
+
+        # Start recording to SD.  It pre-allocates the data file so we use 12 hours as a compromise (smaller than 24).
+        logger.info("Starting recording to SD")
+        self.board.config_board('K')
+
         logger.info("Starting stream")
         self.board.start_stream()
         filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + ".brainflow.csv"
@@ -222,5 +239,6 @@ class BrainflowInput:
         if self.board:
             b = self.board
             self.board = None
+            b.config_board('j') # stop recording to SD
             b.stop_stream()
             b.release_session()

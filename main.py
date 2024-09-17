@@ -71,7 +71,7 @@ async def run_brainflow():
 
     if args.wait_for_commands == False:
         logger.info("Connect")
-        brainflow_input.connect_to_board()
+        brainflow_input.connect_to_board(None)
 
     while not done:
         if args.just_wait == True:
