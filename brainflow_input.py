@@ -2,7 +2,7 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Callable
 
 import numpy as np
 import antropy as ant
@@ -13,13 +13,14 @@ from nptyping import NDArray, Float64
 from traitlets import List
 
 from shared import BandPowers, PerChannel
+from websocket import WebsocketHandler
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class BrainflowInput:
 
-    def __init__(self, board_id: int, default_channel_names: List[str], serial_port: str, samples_per_epoch: int, streamer: str):
+    def __init__(self, board_id: int, default_channel_names: List[str], serial_port: str, samples_per_epoch: int, streamer: str, emit_event_callback: Callable[[str, float], None]):
         BoardShim.enable_dev_board_logger()
         BoardShim.set_log_level(0)
         BoardShim.release_all_sessions()
@@ -32,47 +33,56 @@ class BrainflowInput:
         self.sampling_rate = BoardShim.get_sampling_rate(board_id)
         self.board = None
         self.streamer = streamer
+        self.emit_event_callback = emit_event_callback
 
     def connect_to_board(self, channel_names: Optional[List[str]]):
-        if channel_names is not None:
-            self.channel_names = channel_names
-        logger.info("Connecting to board with channels " + str(self.channel_names))
-        BoardShim.release_all_sessions()
-        params = BrainFlowInputParams()
-        params.serial_port=self.serial_port
-        # params.ip_address="225.1.1.1"
-        # params.ip_port=6677
-        # params.master_board=0
-        self.board = BoardShim(self.board_id, params)
-        logger.info("Connected to board")
-        self.board.prepare_session()
+        self.emit_event("brainflow_recording_start_attempted", time.time())
+        try:
+            if channel_names is not None:
+                self.channel_names = channel_names
+            logger.info("Connecting to board with channels " + str(self.channel_names))
+            BoardShim.release_all_sessions()
+            params = BrainFlowInputParams()
+            params.serial_port=self.serial_port
+            # params.ip_address="225.1.1.1"
+            # params.ip_port=6677
+            # params.master_board=0
+            self.board = BoardShim(self.board_id, params)
+            logger.info("Connected to board")
+            self.board.prepare_session()
 
-        # Turn off all channels
-        for i in range(len(self.channel_names), 8):
-            logger.info("Turning off channel " + str(i))
-            self.board.config_board(str(i))
-        symbols = ['!', '@', '#', '$', '%', '^', '&', '*']
-        for i in range(len(self.channel_names)):
-            symbol = symbols[i]
-            logger.info("Turning on channel " + str(i) + " with " + symbol)
-            self.board.config_board(symbol)
+            # Turn off all channels
+            for i in range(len(self.channel_names), 8):
+                logger.info("Turning off channel " + str(i))
+                self.board.config_board(str(i))
+            symbols = ['!', '@', '#', '$', '%', '^', '&', '*']
+            for i in range(len(self.channel_names)):
+                symbol = symbols[i]
+                logger.info("Turning on channel " + str(i) + " with " + symbol)
+                self.board.config_board(symbol)
 
-        # Start recording to SD.  It pre-allocates the data file so we use 12 hours as a compromise (smaller than 24).
-        logger.info("Starting recording to SD")
-        self.board.config_board('K')
+            self.emit_event("brainflow_recording_pre_file_start", time.time())
+            # Start recording to SD.  It pre-allocates the data file so we use 12 hours as a compromise (smaller than 24).
+            self.board.config_board('K')
+            self.emit_event("brainflow_recording_post_file_start", time.time())
 
-        logger.info("Starting stream")
-        self.board.start_stream()
-        filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + ".brainflow.csv"
-        logger.info(f"Writing to file {filename}")
-        self.board.add_streamer(f"file://{filename}:w")
-        if self.streamer is not None:
-            self.board.add_streamer(self.streamer)
-        logger.info("Stream started")
+            logger.info("Starting stream")
+            self.board.start_stream()
+            filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + ".brainflow.csv"
+            logger.info(f"Writing to file {filename}")
+            self.board.add_streamer(f"file://{filename}:w")
+            if self.streamer is not None:
+                self.board.add_streamer(self.streamer)
+            logger.info("Stream started")
 
-        self.eeg_channels = BoardShim.get_eeg_channels(self.board_id)[:len(self.channel_names)]
-        logger.info(f"EEG Channels: {self.eeg_channels}")
-        self.buffer = {channel: [] for channel in self.eeg_channels}
+            self.eeg_channels = BoardShim.get_eeg_channels(self.board_id)[:len(self.channel_names)]
+            logger.info(f"EEG Channels: {self.eeg_channels}")
+            self.buffer = {channel: [] for channel in self.eeg_channels}
+        except Exception as e:
+            self.board = None
+            logger.error(f"Error connecting to board: {e}")
+            self.emit_event("brainflow_recording_start_failed", time.time())
+            raise e
 
     async def fetch_and_process_samples(self) -> list[PerChannel]:
         if self.board is None:
@@ -239,6 +249,12 @@ class BrainflowInput:
         if self.board:
             b = self.board
             self.board = None
-            b.config_board('j') # stop recording to SD
+
+            self.emit_event("brainflow_recording_file_stop", time.time())
+
+            b.config_board('j')  # stop recording to SD
             b.stop_stream()
             b.release_session()
+
+    def emit_event(self, event_name: str, timestamp: float):
+        self.emit_event_callback(event_name, timestamp)

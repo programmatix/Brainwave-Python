@@ -4,13 +4,14 @@ import websockets
 import logging
 import json
 import ssl
+from typing import Callable
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class WebsocketHandler:
-    def __init__(self, ssl_cert, ssl_key, on_start, on_stop, on_quit):
+    def __init__(self, ssl_cert, ssl_key, on_start, on_stop, on_quit, emit_event_callback: Callable[[str, float], None]):
         self.ssl_cert = ssl_cert
         self.ssl_key = ssl_key
         self.server = None
@@ -20,6 +21,7 @@ class WebsocketHandler:
         self.on_start = on_start
         self.on_stop = on_stop
         self.on_quit = on_quit
+        self.emit_event_callback = emit_event_callback
         self.shutdown_signal = asyncio.Event()
 
     async def handle_websocket(self, websocket, path):
@@ -92,3 +94,6 @@ class WebsocketHandler:
     async def broadcast_websocket_message(self, message):
         for client in self.clients:
             await client.send(message)
+
+    def emit_event(self, event_name: str, timestamp: float):
+        asyncio.create_task(self.emit_event_callback(event_name, timestamp))

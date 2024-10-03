@@ -45,13 +45,22 @@ async def run_brainflow():
     done = False
     samples_per_epoch = args.samples_per_epoch
 
+    def emit_event_callback(event_name: str, timestamp: float):
+        logger.info(f"Emitting event: {event_name} for {timestamp}")
+        message = json.dumps({
+            'address': 'brainflow_event',
+            'event': event_name,
+            'timestamp': timestamp
+        })
+        asyncio.create_task(websocket_handler.broadcast_websocket_message(message))
+
     influx = None
     if args.influx_url:
         if not all([args.influx_url, args.influx_database, args.influx_username, args.influx_password]):
             logger.error("All InfluxDB parameters (URL, token, org, bucket) must be provided")
             return
         influx = InfluxWriter(args.influx_url, args.influx_database, args.influx_username, args.influx_password)
-    brainflow_input = BrainflowInput(args.board_id, args.channels, args.serial_port, samples_per_epoch, args.streamer)
+    brainflow_input = BrainflowInput(args.board_id, args.channels, args.serial_port, samples_per_epoch, args.streamer, emit_event_callback)
 
     def set_done_true():
         nonlocal done
@@ -60,7 +69,8 @@ async def run_brainflow():
     websocket_handler = WebsocketHandler(args.ssl_cert, args.ssl_key,
                                          brainflow_input.connect_to_board,
                                          lambda: brainflow_input.close(),
-                                         set_done_true)
+                                         set_done_true,
+                                         emit_event_callback)
 
     websocket_server_task = None
     if args.websocket_port:
