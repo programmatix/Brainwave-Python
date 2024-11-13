@@ -40,3 +40,25 @@ class InfluxWriter:
 
         logger.info(f"Saving {len(json_body)} points to Influx")
         self.client.write_points(json_body, time_precision='ms')
+
+    async def write_raw_to_influx(self, eeg_data: list[PerChannel], start_of_epoch: float, samples_per_epoch: int, sampling_rate: int):
+        json_body = []
+
+        for channel in eeg_data:
+            for i, sample in enumerate(channel.raw):
+                time = int(start_of_epoch + (i / sampling_rate * 1000))
+
+                data_point = {
+                    "measurement": "brainwave_raw",
+                    "tags": {
+                        "channel": channel.channelName,
+                    },
+                    "fields": {
+                        "raw_data": sample
+                    },
+                    "time": time
+                }
+                json_body.append(data_point)
+
+        logger.info(f"Saving {len(json_body)} raw data points to Influx")
+        self.client.write_points(json_body, time_precision='ms')

@@ -4,10 +4,12 @@ import json
 import logging
 import traceback
 from datetime import datetime
+from xmlrpc.client import boolean
 
 from brainflow_input import BrainflowInput
 from influx import InfluxWriter
 from json_format import CustomEncoder
+from lsl import LslWriter
 from shared import BandPowers
 from websocket import WebsocketHandler
 
@@ -37,6 +39,7 @@ async def run_brainflow():
     parser.add_argument('--ssl_cert', type=str, help='SSL cert file for websocket server')
     parser.add_argument('--ssl_key', type=str, help='SSL key file for websocket server')
     parser.add_argument('--streamer', type=str, help='Will add a Brainflow streamer output, e.g. streaming_board://224.0.0.0:10000, that can then be read by programs like OpenBCI GUI')
+    parser.add_argument('--lsl', type=boolean, help='Will add an LSL streamer output with name "Brainwave-LSL" and type "EEG", and the provided identifier')
 
     args = parser.parse_args()
 
@@ -61,6 +64,10 @@ async def run_brainflow():
             return
         influx = InfluxWriter(args.influx_url, args.influx_database, args.influx_username, args.influx_password)
     brainflow_input = BrainflowInput(args.board_id, args.channels, args.serial_port, samples_per_epoch, args.streamer, emit_event_callback)
+
+    lsl = None
+    if args.lsl:
+        lsl = LslWriter("cyton", args.channels, brainflow_input.sampling_rate)
 
     def set_done_true():
         nonlocal done
@@ -102,8 +109,11 @@ async def run_brainflow():
                 }, cls=CustomEncoder)))
 
                 if influx:
-                    _ = asyncio.create_task(influx.write_to_influx(eeg_data, start_of_epoch, samples_per_epoch,
-                                                                   brainflow_input.sampling_rate))
+                    _ = asyncio.create_task(influx.write_to_influx(eeg_data, start_of_epoch, samples_per_epoch, brainflow_input.sampling_rate))
+                    # _ = asyncio.create_task(influx.write_raw_to_influx(eeg_data, start_of_epoch, samples_per_epoch, brainflow_input.sampling_rate))
+
+                if lsl:
+                    _ = asyncio.create_task(lsl.write_to_lsl(eeg_data, start_of_epoch, samples_per_epoch, brainflow_input.sampling_rate))
 
         except Exception as e:
             logger.error(f"Error: {e}")

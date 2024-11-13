@@ -9,3 +9,4 @@ influxdb
 paho-mqtt
 websockets
 antropy
+pylsl
