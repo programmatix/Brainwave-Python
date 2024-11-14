@@ -24,7 +24,7 @@ class WebsocketHandler:
         self.emit_event_callback = emit_event_callback
         self.shutdown_signal = asyncio.Event()
 
-    async def handle_websocket(self, websocket, path):
+    async def handle_websocket(self, websocket, path = "/"):
         logger.info(f"WebSocket connection established with {path}")
         self.clients.add(websocket)
         try:
