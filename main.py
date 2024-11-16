@@ -29,6 +29,7 @@ async def run_brainflow():
     parser.add_argument('-wp', '--websocket_port', type=int, help='Websocket port')
     parser.add_argument('-spe', '--samples_per_epoch', type=int, default=250, help='Samples per epoch')
     parser.add_argument('-f', '--save_to_brainflow_file', type=str, help="Save the raw unprocessed data to file")
+    parser.add_argument('-o', '--output_dir', type=str, default=".", help="Where to save files")
     parser.add_argument('--mqtt_url', type=str, help='MQTT URL')
     parser.add_argument('--mqtt_username', type=str, help='MQTT username')
     parser.add_argument('--mqtt_password', type=str, help='MQTT password')
@@ -63,7 +64,7 @@ async def run_brainflow():
             logger.error("All InfluxDB parameters (URL, token, org, bucket) must be provided")
             return
         influx = InfluxWriter(args.influx_url, args.influx_database, args.influx_username, args.influx_password)
-    brainflow_input = BrainflowInput(args.board_id, args.channels, args.serial_port, samples_per_epoch, args.streamer, emit_event_callback)
+    brainflow_input = BrainflowInput(args.board_id, args.channels, args.serial_port, samples_per_epoch, args.streamer, args.output_dir, emit_event_callback)
 
     lsl = None
     if args.lsl:

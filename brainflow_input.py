@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 from datetime import datetime
 from typing import Optional, Callable
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class BrainflowInput:
 
-    def __init__(self, board_id: int, default_channel_names: List[str], serial_port: str, samples_per_epoch: int, streamer: str, emit_event_callback: Callable[[str, float], None]):
+    def __init__(self, board_id: int, default_channel_names: List[str], serial_port: str, samples_per_epoch: int, streamer: str, output_dir: str, emit_event_callback: Callable[[str, float], None]):
         BoardShim.enable_dev_board_logger()
         BoardShim.set_log_level(0)
         BoardShim.release_all_sessions()
@@ -34,6 +35,7 @@ class BrainflowInput:
         self.board = None
         self.streamer = streamer
         self.emit_event_callback = emit_event_callback
+        self.output_dir = output_dir
 
     def connect_to_board(self, channel_names: Optional[List[str]]):
         self.emit_event("brainflow_recording_start_attempted", time.time())
@@ -68,7 +70,7 @@ class BrainflowInput:
 
             logger.info("Starting stream")
             self.board.start_stream()
-            filename = datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + ".brainflow.csv"
+            filename = self.output_dir + os.path.sep + datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + ".brainflow.csv"
             logger.info(f"Writing to file {filename}")
             self.board.add_streamer(f"file://{filename}:w")
             if self.streamer is not None:
