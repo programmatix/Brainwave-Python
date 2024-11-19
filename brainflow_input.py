@@ -116,7 +116,7 @@ class BrainflowInput:
 
         samples_collected_per_channel = len(self.buffer[self.eeg_channels[0]])
         if not all(len(self.buffer[channel]) >= self.samples_per_epoch for channel in self.eeg_channels):
-            logger.info(f"Not enough samples yet - have {samples_collected_per_channel} for first channel")
+            #logger.info(f"Not enough samples yet - have {samples_collected_per_channel} for first channel")
             return []
 
         # Just the EEG channel data
@@ -128,7 +128,7 @@ class BrainflowInput:
             elapsed_ms = (data_collected - self.last_data_collected) * 1000
             # N.b. elapsed_ms will rarely be exactly 1000ms due to the burst nature of the data.  It can also be
             # under 1s since we may have a backlog of data in the buffer.
-            logger.info(f"Collected enough samples for epoch ({samples_collected_per_channel}) in {elapsed_ms} ms")
+            #logger.info(f"Collected enough samples for epoch ({samples_collected_per_channel}) in {elapsed_ms} ms")
         self.last_data_collected = data_collected
         start_time = time.perf_counter()
 
@@ -146,8 +146,8 @@ class BrainflowInput:
             mne_scaled = mne_raw / 1_000_000
             mne_raw_array = mne.io.RawArray(mne_scaled, info)
 
-            print("Raw (orig): ", raw[0:3])
-            print("Raw (MNE) : ", mne_raw_array.get_data(units="µV")[0][0:3])
+            #print("Raw (orig): ", raw[0:3])
+            #print("Raw (MNE) : ", mne_raw_array.get_data(units="µV")[0][0:3])
 
 
             # FFT

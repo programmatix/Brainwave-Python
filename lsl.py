@@ -37,7 +37,7 @@ class LslWriter:
             #     elapsed_time = local_clock() - start_time
             #     required_samples = int(sampling_rate * elapsed_time) - sent_samples
             #     for sample_ix in range(required_samples):
-            logger.info("Sending samples to LSL")
+            #logger.info("Sending samples to LSL")
             samples_sent = 0
             for x in range(len(eeg_data[0].raw)):
                 sample = vectorf()
@@ -47,7 +47,7 @@ class LslWriter:
                 #logger.info("Pushing sample " + str(sample))
                 self.outlet.push_sample(sample)
                 samples_sent += 1
-            logger.info("Sent %d samples to LSL", samples_sent)
+            #logger.info("Sent %d samples to LSL", samples_sent)
             # sent_samples += required_samples
                 # await asyncio.sleep(1 / sampling_rate)
         except Exception as e:
