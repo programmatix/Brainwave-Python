@@ -4,7 +4,7 @@ import websockets
 import logging
 import json
 import ssl
-from typing import Callable
+from typing import Callable, List
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -14,7 +14,7 @@ class WebsocketHandler:
     def __init__(self, ssl_cert, ssl_key, on_start, on_stop, on_quit, emit_event_callback: Callable[[str, float], None]):
         self.ssl_cert = ssl_cert
         self.ssl_key = ssl_key
-        self.server = None
+        self.servers = []
         self.clients = set()
         self.board = None
         self.done = False
@@ -41,17 +41,28 @@ class WebsocketHandler:
 
     async def start_websocket_server(self, port):
         if self.ssl_cert and self.ssl_key:
+            # Start secure WebSocket server (wss://)
             ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ssl_context.load_cert_chain(self.ssl_cert, self.ssl_key)
 
-            logger.info(f"WebSocket server starting on port {port} using SSL")
-            self.server = await websockets.serve(self.handle_websocket, "", port, ssl=ssl_context)
+            logger.info(f"Secure WebSocket server (WSS) starting on port {port}")
+            wss_server = await websockets.serve(self.handle_websocket, "", port, ssl=ssl_context)
+            self.servers.append(wss_server)
+            
+            # Start unsecure WebSocket server (ws://) on port+1
+            unsecure_port = port + 1
+            logger.info(f"Unsecure WebSocket server (WS) starting on port {unsecure_port}")
+            ws_server = await websockets.serve(self.handle_websocket, "", unsecure_port)
+            self.servers.append(ws_server)
         else:
+            # Only start unsecure WebSocket server
             logger.info(f"WebSocket server starting on port {port}")
-            self.server = await websockets.serve(self.handle_websocket, "", port)
+            ws_server = await websockets.serve(self.handle_websocket, "", port)
+            self.servers.append(ws_server)
+            
         await self.shutdown_signal.wait()
-        await self.server.close()
-
+        for server in self.servers:
+            await server.close()
 
     def stop(self):
         self.shutdown_signal.set()
