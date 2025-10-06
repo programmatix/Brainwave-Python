@@ -3,13 +3,35 @@ from typing import List
 from nptyping import Float64, NDArray
 
 
+BAND_DEFINITIONS = [
+    (0.4, 1.0, "sdelta"),
+    (1.0, 4.0, "fdelta"),
+    (4.0, 8.0, "theta"),
+    (8.0, 12.0, "alpha"),
+    (12.0, 16.0, "sigma"),
+    (16.0, 30.0, "beta"),
+]
+
+BAND_NAMES = [band[2] for band in BAND_DEFINITIONS]
+
 class BandPowers:
-    def __init__(self, delta: float, theta: float, alpha: float, beta: float, gamma: float):
-        self.delta = delta
+    def __init__(self, sdelta: float, fdelta: float, theta: float, alpha: float, sigma: float, beta: float):
+        self.sdelta = sdelta
+        self.fdelta = fdelta
         self.theta = theta
         self.alpha = alpha
+        self.sigma = sigma
         self.beta = beta
-        self.gamma = gamma
+
+    def to_dict(self):
+        return {
+            "sdelta": self.sdelta,
+            "fdelta": self.fdelta,
+            "theta": self.theta,
+            "alpha": self.alpha,
+            "sigma": self.sigma,
+            "beta": self.beta,
+        }
 
 
 class PerChannel:

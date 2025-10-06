@@ -13,7 +13,7 @@ from brainflow import BoardShim, DataFilter, DetrendOperations, FilterTypes, Win
 from nptyping import NDArray, Float64
 from traitlets import List
 
-from shared import BandPowers, PerChannel
+from shared import BandPowers, PerChannel, BAND_DEFINITIONS
 from websocket import WebsocketHandler
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -157,6 +157,7 @@ class BrainflowInput:
             fft_raw_json = {"freq": freqs_raw, "power": psds_raw[0]}
 
             filtered_raw = mne_raw_array.get_data(units="µV")[0]
+            band_power_signal = filtered_raw.copy().astype(np.float64)
             DataFilter.detrend(filtered_raw, DetrendOperations.LINEAR)
             # We get a cleaner signal if we remove most of delta, which we don't care about much during waking hours anyway
             low_cutoff = 4
@@ -230,13 +231,26 @@ class BrainflowInput:
             except Exception as e:
                 logger.error(f"Error performing complexity: {e}")
 
+            complexity["abspow"] = abspow
 
-            filtered_2d = np.reshape(filtered, (1, -1))  # Reshape 'raw' into a 2D array with 1 row
-            band_powers_for_channel = DataFilter.get_avg_band_powers(filtered_2d, [0], self.sampling_rate, False)
+
+            try:
+                DataFilter.detrend(band_power_signal, DetrendOperations.LINEAR)
+            except Exception as e:
+                logger.error(f"Error detrending band power signal: {e}")
+
+            band_power_values = []
+            for low, high, band_name in BAND_DEFINITIONS:
+                try:
+                    power_value = DataFilter.get_band_power(band_power_signal, low, high, self.sampling_rate)
+                except Exception as e:
+                    logger.error(f"Error computing band power for {band_name} ({low}-{high} Hz): {e}")
+                    power_value = 0.0
+                band_power_values.append(float(power_value))
 
             eeg_data.append(PerChannel(
                 index, channel_name, raw.tolist(), filtered.tolist(), fft_raw_json, fft_filtered_json,
-                BandPowers(*band_powers_for_channel[0]),
+                BandPowers(*band_power_values),
                 over_threshold_indices,
                 complexity
             ))

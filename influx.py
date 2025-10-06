@@ -1,7 +1,7 @@
 import logging
 from influxdb import InfluxDBClient
 
-from shared import PerChannel
+from shared import PerChannel, BAND_NAMES
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -18,8 +18,7 @@ class InfluxWriter:
             time = int((start_of_epoch + (samples_per_epoch / sampling_rate * 1000)))
 
             fields = {}
-            band_powers = ["delta", "theta", "alpha", "beta", "gamma"]
-            for power in band_powers:
+            for power in BAND_NAMES:
                 fields[power] = getattr(channel.bandPowers, power)
 
             # Retrieve and add complexity metrics from the complexity dictionary
